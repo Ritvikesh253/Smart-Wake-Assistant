@@ -1,6 +1,7 @@
 #!/bin/bash
 # Jarvis Startup Script
-cd /Users/ritvikesh/Desktop/Agravity/Jarvis_wakeup
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 ./venv/bin/python main.py
 echo ""
 echo "Jarvis stopped. Press any key to close..."

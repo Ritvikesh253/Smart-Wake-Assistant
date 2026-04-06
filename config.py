@@ -1,4 +1,4 @@
-# config.py - Mac Optimized Configuration
+# config.py - Cross-platform configuration
 import os
 from dotenv import load_dotenv
 import platform
@@ -16,35 +16,46 @@ CLAP_THRESHOLD = 0.6  # Adjust if too sensitive/not sensitive
 CLAP_TIMEOUT = 0.8  # Seconds to wait for claps (fast check)
 MIN_CLAP_GAP = 0.2  # Minimum gap between claps (seconds)
 
-# Mac-specific app paths (simplified for reliability)
-if platform.system() == "Darwin":
-    # Apps to open - use app names (not full paths)
+# Platform info
+OS_NAME = platform.system()
+
+# Apps to open
+CODING_APPS = {
+    "Visual Studio Code": "app",
+    "Terminal": "app",
+}
+
+LEISURE_APPS = {
+    "Spotify": "app",
+}
+
+if OS_NAME == "Windows":
     CODING_APPS = {
-        "Visual Studio Code": "app",
-        "Terminal": "app",
+        "Code": "app",
+        "cmd": "app",
     }
-    
-    LEISURE_APPS = {
-        "Spotify": "app",
-        "Music": "app",
+elif OS_NAME == "Linux":
+    CODING_APPS = {
+        "code": "app",
+        "x-terminal-emulator": "app",
     }
-    
-    # URLs to open in coding mode (regular browser)
-    CODING_URLS = [
-        "https://github.com",
-        "https://stackoverflow.com",
-        "https://chat.openai.com"
-    ]
-    
-    # URLs to open in leisure mode (INCOGNITO)
-    LEISURE_URLS = [
-        "https://youtube.com",
-        "https://reddit.com",
-        "https://netflix.com"
-    ]
-    
-    # Use incognito for leisure mode
-    USE_INCOGNITO_FOR_LEISURE = True
+
+# URLs to open in coding mode (regular browser)
+CODING_URLS = [
+    "https://github.com",
+    "https://stackoverflow.com",
+    "https://chat.openai.com",
+]
+
+# URLs to open in leisure mode (optionally incognito)
+LEISURE_URLS = [
+    "https://youtube.com",
+    "https://reddit.com",
+    "https://netflix.com",
+]
+
+# Use incognito for leisure mode
+USE_INCOGNITO_FOR_LEISURE = True
 
 # Logging
 LOG_FILE = os.path.expanduser("~/jarvis-assistant/logs/jarvis.log")

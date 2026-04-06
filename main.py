@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# main.py - Jarvis Voice Assistant for Mac
+# main.py - Jarvis Voice Assistant (Cross-Platform)
 # PRIVACY: Wake detection uses speech recognition (no Picovoice API key needed)
 # Only AFTER "Jarvis" is detected, Google Speech is used for command
 import pyaudio
@@ -7,6 +7,8 @@ import sys
 import os
 import time
 import subprocess
+import platform
+import shutil
 import speech_recognition as sr
 from clap_detector import ClapDetector
 from app_launcher import AppLauncher
@@ -16,9 +18,11 @@ from app_launcher import AppLauncher
 
 # === SCREEN LOCK DETECTION ===
 def is_screen_locked():
-    """Check if Mac screen is locked or display is asleep"""
+    """Check if screen is locked on macOS; returns False on other OSes."""
+    if platform.system() != "Darwin":
+        return False
+
     try:
-        # Check if screen is locked using ioreg
         result = subprocess.run(
             ['ioreg', '-n', 'Root', '-d1'],
             capture_output=True, text=True, timeout=2
@@ -26,17 +30,14 @@ def is_screen_locked():
         if 'CGSSessionScreenIsLocked' in result.stdout and '= Yes' in result.stdout:
             return True
         
-        # Also check if display is asleep
         result2 = subprocess.run(
             ['pmset', '-g', 'powerstate', 'IODisplayWrangler'],
             capture_output=True, text=True, timeout=2
         )
-        # Power state 4 = display on, less than 4 = display off/dim
         if 'IODisplayWrangler' in result2.stdout:
             lines = result2.stdout.strip().split('\n')
             for line in lines:
                 if 'IODisplayWrangler' in line:
-                    # Get the power state number
                     parts = line.split()
                     for i, part in enumerate(parts):
                         if part.isdigit():
@@ -50,10 +51,47 @@ def is_screen_locked():
 
 # === VOICE FEEDBACK (TTS) ===
 def speak(text):
-    """Speak text using Mac's built-in say command"""
+    """Speak text using available TTS tools on each OS."""
+    safe_text = text.replace('"', '').replace("'", "")
+
     try:
-        safe_text = text.replace('"', '').replace("'", "")
-        os.system(f'say "{safe_text}"')
+        os_name = platform.system()
+
+        if os_name == "Darwin":
+            subprocess.run(["say", safe_text], timeout=4)
+            return
+
+        if os_name == "Windows":
+            cmd = (
+                "Add-Type -AssemblyName System.Speech; "
+                "$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                f"$speak.Speak('{safe_text}')"
+            )
+            subprocess.run(["powershell", "-NoProfile", "-Command", cmd], timeout=5)
+            return
+
+        for tts_cmd in ["spd-say", "espeak"]:
+            if shutil.which(tts_cmd):
+                subprocess.run([tts_cmd, safe_text], timeout=5)
+                return
+    except:
+        pass
+
+
+def play_notification_sound():
+    """Play a short notification sound across OSes."""
+    try:
+        os_name = platform.system()
+
+        if os_name == "Darwin":
+            subprocess.Popen(["afplay", "/System/Library/Sounds/Pop.aiff"])
+            return
+
+        if os_name == "Windows":
+            subprocess.Popen(["powershell", "-NoProfile", "-Command", "[console]::beep(880,140)"])
+            return
+
+        print("\a", end="", flush=True)
     except:
         pass
 
@@ -67,7 +105,7 @@ class JarvisAssistant:
         self.wake_recognizer.energy_threshold = 350
         self.wake_recognizer.dynamic_energy_threshold = True
         
-        # Find MacBook mic index for PyAudio
+        # Prefer MacBook mic when available; otherwise use default device
         self.mic_index = None
         for i in range(self.pa.get_device_count()):
             info = self.pa.get_device_info_by_index(i)
@@ -103,19 +141,19 @@ class JarvisAssistant:
         
         while self.running:
             try:
-                # Check if Mac is locked/sleeping - pause to save battery
+                # On macOS, pause while screen is locked/asleep
                 if is_screen_locked():
                     if not was_sleeping:
-                        print("💤 Mac locked/sleeping - Jarvis paused (saving battery)")
+                        print("💤 Screen locked/sleeping - Jarvis paused (saving battery)")
                         was_sleeping = True
                     time.sleep(2)  # Check every 2 seconds
                     continue
                 
-                # Mac is awake - resume if we were sleeping
+                # Resume after wake
                 if was_sleeping:
-                    print("☕ Mac awake - Jarvis resuming!")
+                    print("☕ System awake - Jarvis resuming!")
                     was_sleeping = False
-                    os.system('afplay /System/Library/Sounds/Pop.aiff &')
+                    play_notification_sound()
 
                 if self.detect_wake_word(timeout=2):
                     # "Jarvis" detected!
@@ -129,7 +167,7 @@ class JarvisAssistant:
                     time.sleep(0.5)
 
                     print("\n🎧 Waiting for 'Jarvis'... (your speech is private)\n")
-                    os.system('afplay /System/Library/Sounds/Pop.aiff &')
+                    play_notification_sound()
                     
             except KeyboardInterrupt:
                 print("\n👋 Goodbye!")
@@ -141,7 +179,7 @@ class JarvisAssistant:
     def detect_wake_word(self, timeout=2):
         """Listen briefly and return True if wake word is detected."""
         try:
-            with sr.Microphone(device_index=self.mic_index, sample_rate=44100) as source:
+            with sr.Microphone(device_index=self.mic_index) as source:
                 self.wake_recognizer.adjust_for_ambient_noise(source, duration=0.2)
                 audio = self.wake_recognizer.listen(
                     source,
@@ -204,15 +242,14 @@ class JarvisAssistant:
         recognizer.dynamic_energy_threshold = True  # Let it adapt
         
         try:
-            # Find MacBook mic for speech recognition
+            # Prefer MacBook mic on macOS, otherwise default input
             macbook_mic_index = None
             for i, mic_name in enumerate(sr.Microphone.list_microphone_names()):
                 if 'MacBook' in mic_name and 'Microphone' in mic_name:
                     macbook_mic_index = i
                     break
             
-            # Use 44100Hz (Mac's native rate) for best compatibility
-            with sr.Microphone(device_index=macbook_mic_index, sample_rate=44100) as source:
+            with sr.Microphone(device_index=macbook_mic_index) as source:
                 print("🎤 Speak now...")
                 recognizer.adjust_for_ambient_noise(source, duration=0.3)
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
@@ -277,9 +314,8 @@ class JarvisAssistant:
         self.handle_activation()
     
     def _get_default_input_device(self):
-        """Get the best available input device - prioritize MacBook mic for reliability"""
+        """Get best available input device with sensible cross-platform fallback."""
         try:
-            # First, try to find MacBook Air Microphone (most reliable)
             for i in range(self.pa.get_device_count()):
                 info = self.pa.get_device_info_by_index(i)
                 if 'MacBook' in info['name'] and info['maxInputChannels'] > 0:
@@ -287,7 +323,6 @@ class JarvisAssistant:
                     print("   ✅ Using MacBook built-in mic for best reliability\n")
                     return i
             
-            # Fallback to system default if MacBook mic not found
             default_device = self.pa.get_default_input_device_info()
             print(f"\n🎤 Microphone: {default_device['name']}")
             print("   (Change in System Settings > Sound > Input if needed)\n")
@@ -299,7 +334,7 @@ class JarvisAssistant:
     def start(self):
         """Start the assistant"""
         print("\n" + "=" * 50)
-        print("🤖 JARVIS VOICE ASSISTANT FOR MAC")
+        print("🤖 JARVIS VOICE ASSISTANT")
         print("=" * 50)
         print("🔒 Privacy Mode: No logging, no data stored")
         print("=" * 50 + "\n")
