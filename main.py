@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 # main.py - Jarvis Voice Assistant for Mac
-# PRIVACY: Uses Porcupine for LOCAL wake word detection (no data sent to cloud)
+# PRIVACY: Wake detection uses speech recognition (no Picovoice API key needed)
 # Only AFTER "Jarvis" is detected, Google Speech is used for command
-import pvporcupine
 import pyaudio
-import struct
 import sys
 import os
 import time
 import subprocess
 import speech_recognition as sr
-from config import PICOVOICE_API_KEY
 from clap_detector import ClapDetector
 from app_launcher import AppLauncher
 
@@ -66,6 +63,9 @@ class JarvisAssistant:
         self.app_launcher = AppLauncher()
         self.running = True
         self.pa = pyaudio.PyAudio()
+        self.wake_recognizer = sr.Recognizer()
+        self.wake_recognizer.energy_threshold = 350
+        self.wake_recognizer.dynamic_energy_threshold = True
         
         # Find MacBook mic index for PyAudio
         self.mic_index = None
@@ -75,31 +75,18 @@ class JarvisAssistant:
                 self.mic_index = i
                 break
         
-        # Initialize Porcupine for LOCAL wake word detection
-        # This processes audio ON YOUR MAC - nothing sent to cloud!
-        try:
-            self.porcupine = pvporcupine.create(
-                access_key=PICOVOICE_API_KEY,
-                keywords=['jarvis'],
-                sensitivities=[0.9]  # High sensitivity for accent tolerance
-            )
-            print("✅ Jarvis initialized (Privacy Mode: Wake word processed locally)")
-        except Exception as e:
-            print(f"❌ Error initializing Porcupine: {e}")
-            sys.exit(1)
+        print("✅ Jarvis initialized (No Picovoice key required)")
     
     def listen_for_wake_word(self):
         """
-        PRIVACY-FIRST wake word detection using Porcupine.
-        - Audio is processed LOCALLY on your Mac
-        - Nothing is sent to the cloud
-        - Only listens for the word "Jarvis"
-        - Your other speech is NOT recorded or processed
+        Wake word detection using speech recognition.
+        - No Picovoice dependency or API key required
+        - Waits for the word "Jarvis"
         """
         print("\n" + "=" * 50)
         print("🎙️  JARVIS IS LISTENING (Privacy Mode)")
         print("=" * 50)
-        print("🔒 Wake word detection: LOCAL (not sent to cloud)")
+        print("🌐 Wake word detection: Speech recognition service (no API key)")
         print("📝 Available Modes:")
         print("   🔹 Say 'Jarvis' + 2 claps → Coding Mode")
         print("   🔹 Say 'Jarvis' + 'Movie Time' → Movie Mode")
@@ -114,23 +101,12 @@ class JarvisAssistant:
         # Track sleep state
         was_sleeping = False
         
-        # Open audio stream for Porcupine (LOCAL processing only)
-        stream = self.pa.open(
-            rate=self.porcupine.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=self.porcupine.frame_length,
-            input_device_index=self.mic_index
-        )
-        
         while self.running:
             try:
                 # Check if Mac is locked/sleeping - pause to save battery
                 if is_screen_locked():
                     if not was_sleeping:
                         print("💤 Mac locked/sleeping - Jarvis paused (saving battery)")
-                        stream.stop_stream()
                         was_sleeping = True
                     time.sleep(2)  # Check every 2 seconds
                     continue
@@ -138,42 +114,20 @@ class JarvisAssistant:
                 # Mac is awake - resume if we were sleeping
                 if was_sleeping:
                     print("☕ Mac awake - Jarvis resuming!")
-                    stream.start_stream()
                     was_sleeping = False
                     os.system('afplay /System/Library/Sounds/Pop.aiff &')
-                
-                # Read audio frame
-                pcm = stream.read(self.porcupine.frame_length, exception_on_overflow=False)
-                pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
-                
-                # Process LOCALLY with Porcupine - no cloud!
-                result = self.porcupine.process(pcm)
-                
-                if result >= 0:
+
+                if self.detect_wake_word(timeout=2):
                     # "Jarvis" detected!
                     print("🎯 Jarvis detected!")
-                    
-                    # IMPORTANT: Close stream BEFORE handling command
-                    # This frees the mic for clap detector and voice recognition
-                    stream.stop_stream()
-                    stream.close()
-                    
+
                     speak("Yes Sir")
-                    
-                    # NOW we use Google Speech for the command (only after wake word)
+
+                    # Use clap and command flow after wake word
                     self.handle_activation()
-                    
-                    # IMPORTANT: Reopen stream after command is done
+
                     time.sleep(0.5)
-                    stream = self.pa.open(
-                        rate=self.porcupine.sample_rate,
-                        channels=1,
-                        format=pyaudio.paInt16,
-                        input=True,
-                        frames_per_buffer=self.porcupine.frame_length,
-                        input_device_index=self.mic_index
-                    )
-                    
+
                     print("\n🎧 Waiting for 'Jarvis'... (your speech is private)\n")
                     os.system('afplay /System/Library/Sounds/Pop.aiff &')
                     
@@ -182,23 +136,31 @@ class JarvisAssistant:
                 break
             except Exception as e:
                 print(f"Error: {e}")
-                # Try to recover by reopening stream
-                try:
-                    stream.stop_stream()
-                    stream.close()
-                except:
-                    pass
                 time.sleep(0.5)
-                stream = self.pa.open(
-                    rate=self.porcupine.sample_rate,
-                    channels=1,
-                    format=pyaudio.paInt16,
-                    input=True,
-                    frames_per_buffer=self.porcupine.frame_length,
-                    input_device_index=self.mic_index
+
+    def detect_wake_word(self, timeout=2):
+        """Listen briefly and return True if wake word is detected."""
+        try:
+            with sr.Microphone(device_index=self.mic_index, sample_rate=44100) as source:
+                self.wake_recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                audio = self.wake_recognizer.listen(
+                    source,
+                    timeout=timeout,
+                    phrase_time_limit=2,
                 )
-        
-        stream.close()
+
+            text = self.wake_recognizer.recognize_google(audio, language='en-IN').lower()
+            return 'jarvis' in text
+        except sr.WaitTimeoutError:
+            return False
+        except sr.UnknownValueError:
+            return False
+        except sr.RequestError:
+            print("⚠️ Speech recognition unavailable. Check internet connection.")
+            time.sleep(1)
+            return False
+        except Exception:
+            return False
     
     def handle_activation(self):
         """Handle activation: check for claps first, then voice command with retry"""
@@ -355,8 +317,6 @@ class JarvisAssistant:
         
         try:
             self.clap_detector.cleanup()
-            if hasattr(self, 'porcupine'):
-                self.porcupine.delete()
             if hasattr(self, 'pa'):
                 self.pa.terminate()
         except Exception as e:

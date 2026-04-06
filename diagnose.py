@@ -26,7 +26,7 @@ for i in range(pa.get_device_count()):
         print(f"  [{i}] {info['name']} (native: {int(info['defaultSampleRate'])}Hz)")
 
 # Check 2: Stream test at 16000Hz
-print("\n2️⃣ STREAM TEST (16000Hz for Porcupine)")
+print("\n2️⃣ STREAM TEST (16000Hz)")
 print("-" * 40)
 
 working_device = None
@@ -88,24 +88,20 @@ if working_device is not None:
     else:
         print("  ✅ Good audio levels!")
 
-# Check 4: Porcupine
-print("\n4️⃣ PORCUPINE WAKE WORD CHECK")
+# Check 4: Wake word engine
+print("\n4️⃣ WAKE WORD CHECK (NO API KEY)")
 print("-" * 40)
 
 try:
-    import pvporcupine
-    from config import PICOVOICE_API_KEY
-    
-    porcupine = pvporcupine.create(
-        access_key=PICOVOICE_API_KEY,
-        keywords=['jarvis'],
-        sensitivities=[0.9]
-    )
-    print(f"  ✅ Porcupine initialized")
-    print(f"     Required: {porcupine.sample_rate}Hz, {porcupine.frame_length} frames")
-    porcupine.delete()
+    import speech_recognition as sr
+    recognizer = sr.Recognizer()
+    recognizer.energy_threshold = 350
+    recognizer.dynamic_energy_threshold = True
+    print("  ✅ Speech-based wake detection ready")
+    print("     Wake word: jarvis")
+    print("     Requires internet for recognition")
 except Exception as e:
-    print(f"  ❌ Porcupine error: {e}")
+    print(f"  ❌ Wake detection error: {e}")
 
 # Check 5: SpeechRecognition
 print("\n5️⃣ SPEECH RECOGNITION CHECK")

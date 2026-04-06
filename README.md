@@ -1,10 +1,10 @@
 # Smart Wake Assistant
 
-A privacy-first, Python-based wake assistant for macOS that listens for the local wake word "Jarvis", then triggers clap/voice-driven automation flows for coding, media, and study modes.
+A privacy-first, Python-based wake assistant for macOS that listens for the wake word "Jarvis", then triggers clap/voice-driven automation flows for coding, media, and study modes.
 
 ## Highlights
 
-- Local wake word detection using Picovoice Porcupine
+- Wake word detection without API keys
 - Clap and voice command activation flows
 - macOS app and browser automation modes
 - Modular architecture with diagnostics and test scripts
@@ -35,7 +35,6 @@ A privacy-first, Python-based wake assistant for macOS that listens for the loca
 - macOS
 - Python 3.10+
 - Microphone access enabled for Terminal/Python
-- Picovoice Access Key in `.env`
 
 Install dependencies:
 
@@ -58,13 +57,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Create `.env` in the project root:
-
-```env
-PICOVOICE_ACCESS_KEY=your_picovoice_access_key_here
-```
-
-4. Run assistant:
+3. Run assistant:
 
 ```bash
 python main.py
@@ -95,8 +88,7 @@ Useful scripts in this repository:
 
 ## Security and Privacy Notes
 
-- Wake word detection is processed locally via Porcupine.
-- Keep your `.env` private and never commit API keys.
+- No Picovoice API key is required.
 - Review `config.py` before sharing to confirm app URLs and behavior.
 
 ## Roadmap

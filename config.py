@@ -6,8 +6,7 @@ import platform
 # Load environment variables
 load_dotenv()
 
-# Picovoice Configuration
-PICOVOICE_API_KEY = os.getenv("PICOVOICE_ACCESS_KEY")
+# Wake word configuration
 WAKE_WORD = "jarvis"
 
 # Audio Configuration
